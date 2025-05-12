@@ -114,7 +114,6 @@ struct list_elem *list_end (struct list *);
 struct list_elem *list_rbegin (struct list *);
 struct list_elem *list_prev (struct list_elem *);
 struct list_elem *list_rend (struct list *);
-
 struct list_elem *list_head (struct list *);
 struct list_elem *list_tail (struct list *);
 
