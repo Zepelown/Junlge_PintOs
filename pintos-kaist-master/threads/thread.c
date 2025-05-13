@@ -209,6 +209,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	if (thread_current()->priority < t->priority
+		&& thread_current() != idle_thread ) {
+		thread_yield();
+	}
 	return tid;
 }
 
@@ -223,6 +227,7 @@ thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
 	thread_current ()->status = THREAD_BLOCKED;
+
 	schedule ();
 }
 
@@ -244,12 +249,6 @@ thread_unblock (struct thread *t) {
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_insert_ordered(&ready_list,&t->elem,compare_priority_thread,NULL);
 	t->status = THREAD_READY;
-	if (thread_current()->priority < t->priority && thread_current() != idle_thread) {
-		enum intr_level tmp_level = intr_get_level();
-		thread_yield();
-		intr_set_level(tmp_level);
-	}
-
 	intr_set_level(old_level);
 
 }
@@ -312,7 +311,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread) {
-		// list_push_back (&ready_list, &curr->elem);
+		// list_push_back (&ready_list, &curr->elem)
 		list_insert_ordered(&ready_list,&curr->elem,compare_priority_thread,NULL);
 	}
 
@@ -325,9 +324,16 @@ void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 	// If thread_current is not highest priority thread, current thread will yield
-	if (thread_current()->tid != get_highest_priority_thread()->tid) {
+	// if (thread_current()->tid != get_highest_priority_thread()->tid) {
+	// 	thread_yield();
+	// }
+	if (list_empty(&ready_list))
+		return;
+
+	struct thread *th = list_entry(list_front(&ready_list), struct thread, elem);
+
+	if (thread_get_priority() < th->priority)
 		thread_yield();
-	}
 }
 
 /* Returns the current thread's priority. */
@@ -617,18 +623,4 @@ compare_priority_thread(const struct list_elem *a, const struct list_elem *b, vo
 	return t_a->priority > t_b->priority;
 }
 
-static void
-donate_priority() {
-	// struct thread *t = list_entry(list_begin(&ready_list), struct thread, elem);
-	// while (list_next(&ready_list) != NULL) {
-	// 	ASSERT (t->status == THREAD_RUNNING);
-	// 	ASSERT (is_thread (t));
-	//
-	// 	t = list_next(&ready_list);
-	// }
 
-	struct thread *holder = tid_lock.holder;
-
-
-
-}
