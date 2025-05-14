@@ -429,7 +429,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+
 	t->priority = priority;
+	t->original_priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
 	t->magic = THREAD_MAGIC;
 }
 
@@ -611,9 +615,13 @@ allocate_tid (void) {
 	return tid;
 }
 
-static struct thread *
-get_highest_priority_thread (void) {
-	return list_max(&ready_list,compare_priority_thread,NULL);
+void
+thread_test_preemption (void)
+{
+	if (!list_empty (&ready_list) &&
+	thread_current ()->priority <
+	list_entry (list_front (&ready_list), struct thread, elem)->priority)
+		thread_yield ();
 }
 
 static bool

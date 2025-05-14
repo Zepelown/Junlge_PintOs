@@ -91,8 +91,10 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	struct lock *wait_on_lock;
+	struct list donations;
 	bool is_donation;
-	int before_priority;
+	int original_priority;
 	int64_t wake_up_tick; 				/* Wake Up Tick*/
 
 	/* Shared between thread.c and synch.c. */
@@ -143,6 +145,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void thread_test_preemption (void);
 
 void do_iret (struct intr_frame *tf);
 
