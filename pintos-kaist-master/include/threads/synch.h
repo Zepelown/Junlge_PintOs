@@ -19,7 +19,6 @@ void sema_self_test (void);
 /* Lock. */
 struct lock {
 	struct thread *holder;      /* Thread holding lock (for debugging). */
-	struct list_elem donation_elem;
 	struct semaphore semaphore; /* Binary semaphore controlling access. */
 };
 
@@ -39,6 +38,8 @@ void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
 
+
+void refresh_priority();
 /* Optimization barrier.
  *
  * The compiler will not reorder operations across an
