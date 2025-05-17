@@ -188,8 +188,8 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore); //락 얻을 수 있을 때까지 기다림
-	lock->holder = thread_current (); //락 소유자를 현재 스레드로 설정
+	sema_down (&lock->semaphore);
+	lock->holder = thread_current ();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

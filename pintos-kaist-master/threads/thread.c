@@ -11,7 +11,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
-#include "bitmap.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -25,8 +24,7 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
-static struct list ready_lists[64]; /*ready lists whose priority range from 0 to 63*/
-struct list sleep_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -112,7 +110,6 @@ thread_init (void){
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
-	list_init(&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -129,10 +126,6 @@ thread_start (void) {
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
-	ready_bitmap = bitmap_create(64); /*Initialize ready bitmap*/
-	for (int i = 0; i < 64; i++) {
-		list_init(&ready_lists[i]);
-	} /*Initialize ready lists*/
 
 	/* Start preemptive thread scheduling. */
 	intr_enable ();
@@ -240,8 +233,18 @@ thread_block (void) {
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+void
+thread_unblock (struct thread *t) {
+	enum intr_level old_level;
 
-+
+	ASSERT (is_thread (t));
+
+	old_level = intr_disable ();
+	ASSERT (t->status == THREAD_BLOCKED);
+	list_push_back (&ready_list, &t->elem);
+	t->status = THREAD_READY;
+	intr_set_level (old_level);
+}
 
 /* Returns the name of the running thread. */
 const char *
@@ -539,44 +542,38 @@ do_schedule(int status) {
 static void
 schedule (void) {
 	struct thread *curr = running_thread ();
-	//struct thread *next = next_thread_to_run ();
-	size_t highest_priority_index = bitmap_scan_reverse(ready_bitmap);
-	struct list_elem* target;
-	if (highest_priority_index != BITMAP_ERROR && !list_empty(&ready_lists[highest_priority_index])) {
-		target = list_front(&ready_lists[highest_priority_index]);
-		struct thread *next = list_entry(target, struct thread, elem);
+	struct thread *next = next_thread_to_run ();
 
-		ASSERT (intr_get_level () == INTR_OFF);
-		ASSERT (curr->status != THREAD_RUNNING);
-		ASSERT (is_thread (next));
-		/* Mark us as running. */
-		next->status = THREAD_RUNNING;
+	ASSERT (intr_get_level () == INTR_OFF);
+	ASSERT (curr->status != THREAD_RUNNING);
+	ASSERT (is_thread (next));
+	/* Mark us as running. */
+	next->status = THREAD_RUNNING;
 
-		/* Start new time slice. */
-		thread_ticks = 0;
+	/* Start new time slice. */
+	thread_ticks = 0;
 
 #ifdef USERPROG
-		/* Activate the new address space. */
-		process_activate (next);
+	/* Activate the new address space. */
+	process_activate (next);
 #endif
 
-		if (curr != next) {
-			/* If the thread we switched from is dying, destroy its struct
-			   thread. This must happen late so that thread_exit() doesn't
-			   pull out the rug under itself.
-			   We just queuing the page free reqeust here because the page is
-			   currently used by the stack.
-			   The real destruction logic will be called at the beginning of the
-			   schedule(). */
-			if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
-				ASSERT (curr != next);
-				list_push_back (&destruction_req, &curr->elem);
-			}
-
-			/* Before switching the thread, we first save the information
-			 * of current running. */
-			thread_launch (next);
+	if (curr != next) {
+		/* If the thread we switched from is dying, destroy its struct
+		   thread. This must happen late so that thread_exit() doesn't
+		   pull out the rug under itself.
+		   We just queuing the page free reqeust here because the page is
+		   currently used by the stack.
+		   The real destruction logic will be called at the beginning of the
+		   schedule(). */
+		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
+			ASSERT (curr != next);
+			list_push_back (&destruction_req, &curr->elem);
 		}
+
+		/* Before switching the thread, we first save the information
+		 * of current running. */
+		thread_launch (next);
 	}
 }
 
