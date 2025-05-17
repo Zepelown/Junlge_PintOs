@@ -70,7 +70,7 @@ last_mask (const struct bitmap *b) {
    Returns true if success, false if memory allocation
    failed. */
 struct bitmap *
-bitmap_create (size_t bit_cnt) {
+ bitmap_create (size_t bit_cnt) {
 	struct bitmap *b = malloc (sizeof *b);
 	if (b != NULL) {
 		b->bit_cnt = bit_cnt;
@@ -296,6 +296,22 @@ bitmap_scan_and_flip (struct bitmap *b, size_t start, size_t cnt, bool value) {
 		bitmap_set_multiple (b, idx, cnt, !value);
 	return idx;
 }
+
+size_t
+bitmap_scan_reverse(struct bitmap *b) {
+	size_t size = b->bit_cnt;
+	for (size_t i = size-1; i > 0; i--) {
+		if (bitmap_test(b,i)) {
+			return i;
+		}
+	}
+	if (bitmap_test(b,0)) {
+		return 0;
+	}
+
+	return BITMAP_ERROR;
+}
+
 
 /* File input and output. */
 

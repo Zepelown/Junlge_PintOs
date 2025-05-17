@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <inttypes.h>
 
+struct bitmap *ready_bitmap; /*for ready_lists*/
 /* Bitmap abstract data type. */
 
 /* Creation and destruction. */
@@ -36,7 +37,7 @@ bool bitmap_all (const struct bitmap *, size_t start, size_t cnt);
 #define BITMAP_ERROR SIZE_MAX
 size_t bitmap_scan (const struct bitmap *, size_t start, size_t cnt, bool);
 size_t bitmap_scan_and_flip (struct bitmap *, size_t start, size_t cnt, bool);
-
+size_t bitmap_scan_reverse(struct bitmap *b) ;
 /* File input and output. */
 #ifdef FILESYS
 struct file;
