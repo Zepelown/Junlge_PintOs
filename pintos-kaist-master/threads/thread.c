@@ -366,6 +366,7 @@ thread_yield(void)
 void thread_set_priority(int new_priority)
 {
 	thread_current()->original_priority = new_priority;
+	refresh_priority();
 	preempt_priority();
 }
 /* Returns the current thread's priority. */
