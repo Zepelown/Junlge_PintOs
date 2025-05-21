@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+//#include <bits/sigcontext.h>
+
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
@@ -27,6 +29,8 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+void argument_stack(char **parse, int count, void **esp);
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -38,6 +42,8 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
+
+//새로운 커널 스레드를 만드는 것
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
@@ -51,13 +57,13 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);//새로운 커널 스레드 생성
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
 }
 
-/* A thread function that launches first user process. */
+/* A thread function that launches first user process. 새로운 커널 스레드의 시작점 */
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -158,6 +164,7 @@ error:
 	thread_exit ();
 }
 
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
@@ -173,17 +180,19 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	/* We first kill the current context */
+	/* We first kill the current context  현재(사용자) 컨텍스트를 정리함*/
 	process_cleanup ();
 
-	/* And then load the binary */
+	/* And then load the binary 그리고나서 바이너리를 로드함*/
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+		palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+
+	hex_dump((uintptr_t)_if.rsp, (void *)_if.rsp, USER_STACK - (uintptr_t)_if.rsp, true);
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -204,6 +213,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1){}
 	return -1;
 }
 
@@ -212,7 +222,7 @@ void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
+	 * TODO: Implement process teurmination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
@@ -329,6 +339,17 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	//인자 패싱
+	char *token, *save_ptr;
+	char *argv[128];
+	int cnt = 0;
+
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+	{
+		argv[cnt++] = token;
+	}
+	//인자 패싱
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -336,7 +357,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argv[0]);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -413,10 +434,48 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-
+//인자 패싱
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	char *user_argv_addrs[16];
+//1. 파싱된 실제 문자열들을 사용자 스택에 복사
+	for (int i = cnt - 1; i >= 0; i--)
+	{
+		int len = strlen (argv[i]) + 1;
+		if_->rsp -= len;
+		memcpy (if_->rsp, argv[i], len);
+		user_argv_addrs[i] = (char*)if_->rsp;
+	}
+	// 2. 워드 정렬 (x86-64에서는 주소가 8의 배수가 되도록):
+	//    포인터들을 푸시하기 전에 스택 포인터를 정렬합니다.
+	int padding = (uintptr_t)if_->rsp % 16;
+	if (padding != 0) {
+		if_->rsp -= padding; // 남은 공간만큼 스택 포인터 감소
+		memset(if_->rsp, 0, padding); // 패딩 영역을 0으로 채움
+	}
 
+	// 3. NULL 포인터를 스택에 푸시
+	if_->rsp -= sizeof(char*);
+	*(char **)(if_->rsp) = NULL;
+
+	// 4. 스택에 저장된 각 인자 문자열의 주소
+	for (int i = cnt - 1; i >= 0; i--)
+	{
+		if_->rsp -= sizeof(char*);
+		*(char**)(if_->rsp) = user_argv_addrs[i];
+	}
+
+	// 5. main 함수에 전달될 argv 배열의 시작주소를 %rsi 레지스터 값으로 설정
+	if_->R.rsi = (uint64_t)if_->rsp;
+
+	// 6. 사용자 프로그램의 main 함수에 전달될 argc 값을 %rdi 레지스터 값으로 설정
+	if_->R.rdi = (uint64_t)cnt;
+
+	// 7. 가짜 반환 주소 (0)를 스택에 푸시합니다.
+	if_->rsp -= sizeof(void *);
+	*(void **)(if_->rsp) = NULL;
+
+//인자 패싱
 	success = true;
 
 done:
@@ -540,11 +599,11 @@ setup_stack (struct intr_frame *if_) {
 	uint8_t *kpage;
 	bool success = false;
 
-	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	kpage = palloc_get_page (PAL_USER | PAL_ZERO);//물리 페이지(kpage) 한 개 0으로 초기화 해서 할당
 	if (kpage != NULL) {
-		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);//kpage와 가상 주소 공간 매핑
 		if (success)
-			if_->rsp = USER_STACK;
+			if_->rsp = USER_STACK;//스택 포인터를 USER_STACK으로 설정
 		else
 			palloc_free_page (kpage);
 	}

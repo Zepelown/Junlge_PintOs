@@ -3,17 +3,17 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
+//enum은 enumeration(열거형)을 의미하는 C언어의 키워드
 /* Interrupts on or off? */
 enum intr_level {
 	INTR_OFF,             /* Interrupts disabled. */
 	INTR_ON               /* Interrupts enabled. */
 };
 
-enum intr_level intr_get_level (void);
-enum intr_level intr_set_level (enum intr_level);
-enum intr_level intr_enable (void);
-enum intr_level intr_disable (void);
+enum intr_level intr_get_level (void); //현재 인터럽트 상태를 반환
+enum intr_level intr_set_level (enum intr_level); //레벨에 따라 인터럽트를 켜거나 끔. 이전 인터럽트 상태를 반환함
+enum intr_level intr_enable (void);//인터럽트를 켭니다. 이전 인터럽트 상태를 반환함.
+enum intr_level intr_disable (void);//인터럽를 끕니다. 이전 인터럽트 상태를 반환함.
 
 /* Interrupt stack frame. */
 struct gp_registers {

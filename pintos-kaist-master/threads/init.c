@@ -88,8 +88,8 @@ main (void) {
 	paging_init (mem_end);
 
 #ifdef USERPROG
-	tss_init ();
-	gdt_init ();
+	tss_init (); //task state segment - 커널 모드로 전환될 때 커널 스택 포인터 찾아줌.
+	gdt_init (); //global decriptor table - 운영체제 부팅될 때 실행되는 초기화 과정의 일부. tss정보도 포함
 #endif
 
 	/* Initialize interrupt handlers. */
@@ -98,8 +98,8 @@ main (void) {
 	kbd_init ();
 	input_init ();
 #ifdef USERPROG
-	exception_init ();
-	syscall_init ();
+	exception_init ();//예외 처리 핸들러를 시스템에 등록
+	syscall_init ();//syscall명령어를 사용하여 cpu가 어떻게 커널 모드로 전환하고 어떤 커널 코드를 실행해야 하는지 설정
 #endif
 	/* Start thread scheduler and enable interrupts. */
 	thread_start ();
@@ -118,7 +118,7 @@ main (void) {
 
 	printf ("Boot complete.\n");
 
-	/* Run actions specified on kernel command line. */
+	/* 커널 명령줄에 지정된 작업 실행 */
 	run_actions (argv);
 
 	/* Finish up. */
@@ -221,7 +221,7 @@ parse_options (char **argv) {
 			random_init (atoi (value));
 		else if (!strcmp (name, "-mlfqs"))
 			thread_mlfqs = true;
-#ifdef USERPROG
+#ifdef USERPROG //명령줄 옵션을 해석
 		else if (!strcmp (name, "-ul"))
 			user_page_limit = atoi (value);
 		else if (!strcmp (name, "-threads-tests"))
@@ -236,14 +236,14 @@ parse_options (char **argv) {
 
 /* Runs the task specified in ARGV[1]. */
 static void
-run_task (char **argv) {
-	const char *task = argv[1];
+run_task (char **argv) { //argv[0]은 "run", argv[1]은 실행할 작업 이름(및 인자) 문자열
+	const char *task = argv[1]; //실행할 작업 이름(및 인자)를 task 변수에 저장
 
-	printf ("Executing '%s':\n", task);
-#ifdef USERPROG
-	if (thread_tests){
+	printf ("Executing '%s':\n", task); //"Excuting 'task name' :" 메시지 출력
+#ifdef USERPROG//task 문자열에 해당하는 이름을 가진, 커널 내부에 미리 정의되고 컴파일된 테스트함수를 직접 호출, 실행
+	if (thread_tests){//프로젝트 1 스레드만 진행 중일 때 용도
 		run_test (task);
-	} else {
+	} else { //여기서부터 프로젝트 2 새로운 사용자 프로그램으로 실행해야 할 때
 		process_wait (process_create_initd (task));
 	}
 #else
@@ -256,14 +256,15 @@ run_task (char **argv) {
    up to the null pointer sentinel. */
 static void
 run_actions (char **argv) {
+	//액션을 정의하는 구조체
 	/* An action. */
 	struct action {
-		char *name;                       /* Action name. */
-		int argc;                         /* # of args, including action name. */
-		void (*function) (char **argv);   /* Function to execute action. */
+		char *name;                       /* Action name. 액션 이름 */
+		int argc;                         /* # of args, including action name. 액션에 필요한 총 인자 수 */
+		void (*function) (char **argv);   /* Function to execute action. 액션을 실행할 함수 포인터 */
 	};
 
-	/* Table of supported actions. */
+	/* Table of supported actions. 지원되는 액션들의 테이블 */
 	static const struct action actions[] = {
 		{"run", 2, run_task},
 #ifdef FILESYS
@@ -276,25 +277,25 @@ run_actions (char **argv) {
 		{NULL, 0, NULL},
 	};
 
-	while (*argv != NULL) {
-		const struct action *a;
+	while (*argv != NULL) {//처리할 인자(액션)가 남아있는 동안 반복
+		const struct action *a;//현재 처리할 액션을 가리킬 포인터
 		int i;
 
-		/* Find action name. */
+		/* Find action name. 액션 이름 찾기 */
 		for (a = actions; ; a++)
-			if (a->name == NULL)
-				PANIC ("unknown action `%s' (use -h for help)", *argv);
-			else if (!strcmp (*argv, a->name))
-				break;
+			if (a->name == NULL)//테이블 끝까지 갔는데 일치하는 액션이 없으면
+				PANIC ("unknown action `%s' (use -h for help)", *argv);//패닉이 와용
+			else if (!strcmp (*argv, a->name))//현재 argv[0]과 테이블의 액션 이름이 일치하면
+				break;//해당 액션을 찾았으므로 내부 루프 탈출
 
-		/* Check for required arguments. */
-		for (i = 1; i < a->argc; i++)
-			if (argv[i] == NULL)
-				PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);
+		/* Check for required arguments. 필요한 인자들 확인 */
+		for (i = 1; i < a->argc; i++)//찾은 액션 'a'가 요구하는 인자 수(a->argc)만큼 실제로 argv에 인자가 있는지 확인
+			if (argv[i] == NULL)//필요한 인자가 부족하면(argv[i]가 NULL이면 더 이상 인자가 없음)
+				PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);//없어서 패닉
 
-		/* Invoke action and advance. */
-		a->function (argv);
-		argv += a->argc;
+		/* Invoke action and advance. 액션 실행 및 다음 액션으로 argv 이동 */
+		a->function (argv);//찾은 액션에 연결된 함수를 호출(현재 argv를 인자로 전달)
+		argv += a->argc;//현재 처리한 액션과 그 인자들만큼 argv 포인터를 뒤로 이동시켜 다음 액션을 가리키도록 함.
 	}
 
 }
