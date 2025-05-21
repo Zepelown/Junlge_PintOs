@@ -9,5 +9,6 @@ int process_exec (void *f_name);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
-
+// void parse_file_name (const char *file_name, char* args);
+void parse_file_name(const char *file_name, char **args);
 #endif /* userprog/process.h */

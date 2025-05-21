@@ -18,9 +18,15 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
+
+
+#define MAX_ARG 25
+#define MAX_CMDLINE 128
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -39,19 +45,24 @@ process_init (void) {
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
+
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
+	char *args[MAX_ARG] = {NULL};
+	// printf("process init %s\n", file_name);
+	parse_file_name(file_name,args);
+
 	fn_copy = palloc_get_page (0);
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (args[0], PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -176,17 +187,27 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	// char *args[ARG_MAX+1] = {NULL};
+	// parse_file_name(f_name,args);
+	// printf("process exec %s\n",args[1]);
+
+	success = load (f_name, &_if);
+
+
+	// hex_dump((uintptr_t)_if.rsp, _if.rsp,(USER_STACK - (uintptr_t)_if.rsp), true);
+
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	palloc_free_page (f_name);
 	if (!success)
 		return -1;
 
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
+
 }
 
 
@@ -204,6 +225,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	for (int i=0; i<2000000000; i++){}
 	return -1;
 }
 
@@ -322,7 +344,9 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Returns true if successful, false otherwise. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
+	// printf("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n");
 	struct thread *t = thread_current ();
+	// printf("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n");
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
@@ -335,10 +359,13 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	char *argv[MAX_ARG+1] = {NULL};
+	parse_file_name(file_name,argv);
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argv[0]);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
 
@@ -350,7 +377,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", argv[0]);
 		goto done;
 	}
 
@@ -417,6 +444,68 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
+	// 문자열 split 부분
+	// printf("stack insert init\n");
+	// printf("comand : %s %s \n", *argv, argv[1]);
+	// 전체 커맨드 라인 길이 계산
+	int argc = 0;
+	for (int i = 0; i < MAX_ARG+1; i++) {
+		if (argv[i] == NULL) {
+			break;
+		}
+		argc++;
+	}
+	// printf("args : %d", argc);
+	//스택 넣는 부분
+	int arg_index = argc - 1;
+	char *arg_addresses[MAX_ARG];  // 스택에 복사된 문자열 주소 저장
+	while (arg_index >= 0) {
+		if (arg_index < 0) {
+			break;
+		}
+		int str_len = strlen(argv[arg_index]) + 1; // NULL 포함
+		if_->rsp -= str_len;
+		// printf("insert data %d : %s \n",arg_index, argv[arg_index]);
+		memcpy((void *)if_->rsp, argv[arg_index], str_len);
+		arg_addresses[arg_index] = (char *)if_->rsp;
+		arg_index--;
+	}
+
+	// // 파일 이름을 포함한 매개변수들을 넣고 난 뒤 블럭 라인 처리
+	// // 패딩 처리
+	uint64_t padding = if_->rsp % 8;
+	if_->rsp -= padding;
+	memset((void *)if_->rsp, 0,padding);
+
+	// null 포인터 넣기
+	// argv[argc] = NULL;
+	if_->rsp -= sizeof(char*);
+	memset((void *)if_->rsp, 0, sizeof(char*));
+
+	// argv[i] 주소들을 역순으로 push
+	for (int i = argc - 1; i >= 0; i--) {
+		if_->rsp -= sizeof(char *);
+		// *(char **)if_->rsp = arg_addresses[i];
+		// printf("insert address %d : %p \n",i, &arg_addresses[i]);
+		memcpy((void *)if_->rsp, &arg_addresses[i], sizeof(char *));
+		// memcpy((void *)if_->rsp, 0, sizeof(char *));
+	}
+
+	// %rsi 레지스터를 argv[0]을 가리키도록 하고 %rdi를 argc로 설정
+	char **argv_addr = (char **)if_->rsp;
+	// 리턴 주소 설정
+	if_->rsp -= sizeof(uint64_t);
+	// memset((void *)if_->rsp, 0, sizeof(uint64_t));
+	*(uint64_t *)if_->rsp = 0;
+
+	if_->R.rdi = argc;
+	if_->R.rsi = (uint64_t) argv_addr;  // 사용자 프로그램의 argv == 스택에 만든 이 배열
+
+	// if_->R.rdi =argc;
+	// if_->R.rsi = (char*) if_->rsp + 8;
+
+
+	// ------
 	success = true;
 
 done:
@@ -424,6 +513,37 @@ done:
 	file_close (file);
 	return success;
 }
+
+
+void parse_file_name(const char *file_name, char **args) {
+	char buf[MAX_CMDLINE];
+	char *save_ptr;
+	int i = 0;
+
+	strlcpy(buf, file_name, sizeof(buf));
+	char *token = strtok_r(buf, " ", &save_ptr);
+	while (token != NULL && i < MAX_ARG - 1) {
+		args[i] = palloc_get_page(0);  // 또는 malloc 등으로 메모리 할당
+		if (args[i] == NULL)
+			break;
+		strlcpy(args[i], token, PGSIZE); // 안전하게 문자열 복사
+		i++;
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+	args[i] = NULL;
+}
+
+
+// void parse_file_name (const char *file_name, char* args) {
+// 	char *token, *save_ptr;
+// 	char* f_name = strtok_r(file_name, " ", &save_ptr);
+// 	int i = 0;
+// 	token = f_name;
+// 	do {
+// 		args[i++] = token;
+// 		token = strtok_r(NULL, " ", &save_ptr);
+// 	} while (token != NULL);
+// }
 
 
 /* Checks whether PHDR describes a valid, loadable segment in
