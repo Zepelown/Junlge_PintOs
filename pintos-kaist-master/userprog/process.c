@@ -173,6 +173,7 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
+	// printf("process_exec\n");
 	char *file_name = f_name;
 	bool success;
 
@@ -189,9 +190,9 @@ process_exec (void *f_name) {
 
 
 	/* And then load the binary */
-	// char *args[ARG_MAX+1] = {NULL};
-	// parse_file_name(f_name,args);
-	// printf("process exec %s\n",args[1]);
+	char *args[MAX_ARG+1] = {NULL};
+	parse_file_name(f_name,args);
+	// printf("process exec %s\n",args[0]);
 
 	success = load (f_name, &_if);
 
@@ -448,6 +449,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	// printf("stack insert init\n");
 	// printf("comand : %s %s \n", *argv, argv[1]);
 	// 전체 커맨드 라인 길이 계산
+	// printf("args calculate\n");
 	int argc = 0;
 	for (int i = 0; i < MAX_ARG+1; i++) {
 		if (argv[i] == NULL) {

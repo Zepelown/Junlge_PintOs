@@ -121,7 +121,7 @@ read (int fd, void *buffer, unsigned size) {
 }
 
 int
-sys_write (int fd, const void *buffer, unsigned size) {
+write (int fd, const void *buffer, unsigned size) {
 	return syscall3 (SYS_WRITE, fd, buffer, size);
 }
 

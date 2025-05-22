@@ -29,6 +29,7 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 #define TEST_MSG "[테스트]"
+#define MAX_FDT_SIZE 128
 
 /* A kernel thread or user process.
  *
@@ -100,6 +101,9 @@ struct thread {
 	struct list_elem donation_elem;
 	int original_priority;
 	int64_t wake_up_tick; 				/* Wake Up Tick*/
+	struct file * fd_table[MAX_FDT_SIZE];
+	int next_fd;
+
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */

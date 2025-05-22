@@ -24,6 +24,8 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -466,6 +468,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->original_priority = priority;
 	t->wait_on_lock = NULL;
+	t->next_fd = 2;
+	for (int i = 0; i < MAX_FDT_SIZE; i++) {
+		t->fd_table[i] = NULL;
+	}
+
 	list_init(&t->donations);
 
 	t->magic = THREAD_MAGIC;

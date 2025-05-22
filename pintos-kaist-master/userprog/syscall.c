@@ -3,6 +3,10 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "devices/input.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -15,11 +19,27 @@ void syscall_entry(void);
 
 void syscall_handler(struct intr_frame *);
 
-static int64_t get_user (const uint8_t *uaddr);
-static bool put_user (uint8_t *udst, uint8_t byte);
-int sys_write (int fd, const void *buffer, unsigned length);
+static int64_t get_user(const uint8_t *uaddr);
+
+static bool put_user(uint8_t *udst, uint8_t byte);
+
+int sys_write(int fd, const void *buffer, unsigned length);
+
+int sys_exec(const char *cmd_line);
+
 void sys_exit(int status);
+
 int exec(const char *cmd_line);
+
+int sys_read(int fd, void *buffer, unsigned length);
+
+bool sys_create(const char *file, unsigned initial_size);
+
+void check_address(void *addr);
+
+int sys_open (const char *file);
+
+int sys_filesize (int fd);
 
 /* System call.
  *
@@ -55,98 +75,151 @@ syscall_handler(struct intr_frame *f UNUSED) {
 	// printf("system call!\n");
 	// printf("system call Num : %llu\n", f->R.rax);
 	int system_call_num = f->R.rax;
-	// /*
-	// SYS_HALT,                   /* Halt the operating system. */
-	// SYS_EXIT,                   /* Terminate this process. */
-	// SYS_FORK,                   /* Clone current process. */
-	// SYS_EXEC,                   /* Switch current process. */
-	// SYS_WAIT,                   /* Wait for a child process to die. */
-	// SYS_CREATE,                 /* Create a file. */
-	// SYS_REMOVE,                 /* Delete a file. */
-	// SYS_OPEN,                   /* Open a file. */
-	// SYS_FILESIZE,               /* Obtain a file's size. */
-	// SYS_READ,                   /* Read from a file. */
-	// SYS_WRITE,                  /* Write to a file. */
-	// SYS_SEEK,                   /* Change position in a file. */
-	// SYS_TELL,                   /* Report current position in a file. */
-	// SYS_CLOSE,                  /* Close a file. */
-	//
 	switch (system_call_num) {
 		case SYS_HALT:
-			printf("HALT\n");
 			break;
 		case SYS_EXIT:
-			// printf("EXIT\n");
 			sys_exit(f->R.rdi);
 			break;
 		case SYS_FORK:
-			printf("FORK\n");
 			break;
 		case SYS_EXEC:
-			printf("EXEC\n");
+			f->R.rax = sys_exec((char *) f->R.rdi);
 			break;
 		case SYS_WAIT:
-			printf("WAIT\n");
 			break;
 		case SYS_CREATE:
-			printf("CREATE\n");
+			// exist 제외 통과
+			f->R.rax = sys_create((char *) f->R.rdi, f->R.rsi);
 			break;
 		case SYS_REMOVE:
-			printf("REMOVE\n");
 			break;
 		case SYS_OPEN:
-			printf("OPEN\n");
+			// 모두 통과
+			f->R.rax = sys_open((char *) f->R.rdi);
 			break;
 		case SYS_FILESIZE:
-			printf("FILESIZE\n");
+			f->R.rax = sys_filesize(f->R.rdi);
 			break;
 		case SYS_READ:
-			printf("READ\n");
+			// 모두 통과
+			f->R.rax = sys_read(f->R.rdi, (void *) f->R.rsi, f->R.rdx);
 			break;
-		case SYS_WRITE: {
-			// printf("WRITE\n");
+		case SYS_WRITE:{
+			// 모두 통과
 			f->R.rax = sys_write(f->R.rdi, (char *) f->R.rsi, f->R.rdx);
 			break;
 		}
 		case SYS_SEEK:
-			printf("SEEK\n");
 			break;
 		case SYS_TELL:
-			printf("TELL\n");
 			break;
 		case SYS_CLOSE:
-			printf("CLOSE\n");
+			// 모두 통과
 			break;
 	}
-
 }
 
-int sys_write(int fd, const void *buffer, unsigned size){
-	//printf("write\n");
-	// if(fd == 0) exit(-1);
-	// if(fd < 0) exit(-1);
-	// if(fd >= FD_MAX) exit(-1);
-
-	// 표준 출력
-	// check_valid_buffer(buffer, size);
-	if(fd == 1 || fd == 2){
-		putbuf(buffer, (size_t)size);
-		return (int)size;
-	}
-	else{
-		// struct thread* curr = thread_current();
-		// struct file* f = curr->fd_table->fd_entries[fd];
-		// if(f == NULL) exit(-1);
-		// return file_write(f, buffer, size);
-	}
-	return 0;
+int sys_exec(const char *cmd_line) {
+	// printf("cmd line : %s\n", cmd_line);
+	// thread_exit();
+	return process_exec((void *) cmd_line);
 }
 
+int sys_read(int fd, void *buffer, unsigned length) {
+	if (fd < 0 || fd == 1 || fd >= MAX_FDT_SIZE) {
+		return -1;
+	}
+	// printf("read\n");
+	if (length > 0) {
+		check_address(buffer);
+		check_address(buffer+length-1);
+
+	} else {
+		return 0;
+	}
+
+	if (fd == 0) {
+		// 리드 테스트는 중에, 일단 그 전에 다른 테스트에서 터져서 진행 불가
+		// input_getc();
+		char *char_buffer = (char *)buffer;
+		unsigned int i;
+		for (i = 0; i < length; i++) {
+			char key = input_getc(); // 한 문자 읽기
+			// EOF (End-Of-File) 처리나 특정 종료 문자 처리 (예: '\0', '\n')
+			if (key == '\0' || key == '\n') { // 예: 개행이나 NULL 만나면 중단
+				char_buffer[i] = key; // 해당 문자까지 저장
+				i++; // 실제 읽은 문자 수에 포함
+				break;
+			}
+			char_buffer[i] = key;
+		}
+		return i; // 실제로 읽은 바이트 수 반환
+
+	} else {
+		// printf("fd > 0\n");
+		// printf("length: %u\n", length);
+		struct file * cur = thread_current()->fd_table[fd];
+		if (cur == NULL) {
+			return -1;
+		}
+		return file_read(cur, buffer, length);
+	}
+}
+
+bool sys_create(const char *file, unsigned initial_size) {
+	check_address((void *) file);
+	check_address((void *)file+initial_size - 1);
+	return filesys_create(file, initial_size);
+}
+
+// 이미 열려 있거나 존재하는 파일에 내용을 씀
+int sys_write(int fd, const void *buffer, unsigned size) {
+	// printf("write \n");
+	if(fd == 0 || fd < 0 || fd >= MAX_FDT_SIZE) return -1;
+	// printf("write normal\n");
+	if (size > 0) {
+		check_address((void *) buffer);
+		check_address((void *) buffer + size - 1);
+	} else {
+		return 0;
+	}
+	if (fd == 1) {
+		putbuf(buffer, size);
+		return (int) size;
+	}
+	struct thread *curr = thread_current();
+	struct file *f = curr->fd_table[fd];
+	if (f == NULL) {
+		return -1;
+	}
+	int bytes_written = file_write(f, buffer, size);
+	// printf("bytes_written = %d\n", bytes_written);
+	return bytes_written;
+}
+int sys_open (const char *file) {
+	check_address((void *)file);
+	struct file * cur = filesys_open(file);
+	if (cur == NULL) {
+		return -1;
+	}
+	thread_current()->next_fd++;
+	thread_current()->fd_table[thread_current()->next_fd] = cur;
+	return thread_current()->next_fd;
+}
 
 void sys_exit(int status) {
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_current()->exit_status = status;
 	thread_exit();
+}
+
+int sys_filesize (int fd) {
+	struct file * cur = thread_current()->fd_table[fd];
+	if (cur == NULL) {
+		return -1;
+	}
+	return file_length(cur);
 }
 
 
@@ -155,13 +228,13 @@ void sys_exit(int status) {
  * Returns the byte value if successful, -1 if a segfault
  * occurred. */
 static int64_t
-get_user (const uint8_t *uaddr) {
+get_user(const uint8_t *uaddr) {
 	int64_t result;
 	__asm __volatile (
-	"movabsq $done_get, %0\n"
-	"movzbq %1, %0\n"
-	"done_get:\n"
-	: "=&a" (result) : "m" (*uaddr));
+		"movabsq $done_get, %0\n"
+		"movzbq %1, %0\n"
+		"done_get:\n"
+		: "=&a" (result) : "m" (*uaddr));
 	return result;
 }
 
@@ -169,13 +242,22 @@ get_user (const uint8_t *uaddr) {
  * UDST must be below KERN_BASE.
  * Returns true if successful, false if a segfault occurred. */
 static bool
-put_user (uint8_t *udst, uint8_t byte) {
+put_user(uint8_t *udst, uint8_t byte) {
 	int64_t error_code;
 	__asm __volatile (
-	"movabsq $done_put, %0\n"
-	"movb %b2, %1\n"
-	"done_put:\n"
-	: "=&a" (error_code), "=m" (*udst) : "q" (byte));
+		"movabsq $done_put, %0\n"
+		"movb %b2, %1\n"
+		"done_put:\n"
+		: "=&a" (error_code), "=m" (*udst) : "q" (byte));
 	return error_code != -1;
 }
+
+void check_address(void *addr) {
+	struct thread *t = thread_current();
+	// Check if address is a user virtual address, not NULL, and mapped.
+	if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL) {
+		sys_exit(-1); // Terminate the process
+	}
+}
+
 
