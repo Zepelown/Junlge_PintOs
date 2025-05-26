@@ -189,7 +189,7 @@ thread_print_stats (void) {
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
-tid_t
+struct thread *
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
@@ -216,11 +216,11 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-
+	list_push_back(&thread_current()->children, &t->child_elem);
 	/* Add to run queue. */
 	thread_unblock (t);
 	preempt_priority();
-	return tid;
+	return t;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -472,8 +472,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	for (int i = 0; i < MAX_FDT_SIZE; i++) {
 		t->fd_table[i] = NULL;
 	}
-
+	list_init(&t->children);
 	list_init(&t->donations);
+	sema_init(&t->wait_semaphore,0);
+	sema_init(&t->load_semaphore,0);
+	sema_init(&t->exit_semaphore, 0);
 
 	t->magic = THREAD_MAGIC;
 }
@@ -683,5 +686,11 @@ bool is_highest_priority(struct thread *t)
 {
 	return list_empty(&ready_list) ||
 		   t->priority >= list_entry(list_front(&ready_list), struct thread, elem)->priority;
+}
+
+// thread.c 에 추가
+struct thread *
+get_initial_thread (void) {
+	return initial_thread;
 }
 

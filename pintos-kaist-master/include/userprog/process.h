@@ -12,3 +12,4 @@ void process_activate (struct thread *next);
 // void parse_file_name (const char *file_name, char* args);
 void parse_file_name(const char *file_name, char **args);
 #endif /* userprog/process.h */
+struct thread *get_child_process(int pid);

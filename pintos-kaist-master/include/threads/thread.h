@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -101,12 +102,23 @@ struct thread {
 	struct list_elem donation_elem;
 	int original_priority;
 	int64_t wake_up_tick; 				/* Wake Up Tick*/
+
 	struct file * fd_table[MAX_FDT_SIZE];
 	int next_fd;
 
+	struct intr_frame parent_if;
+	struct list children;
+	struct list_elem child_elem;
+	struct thread * parent;
+	struct semaphore load_semaphore;
+	struct semaphore wait_semaphore;
+	struct semaphore exit_semaphore;
+
+	struct file * running;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem sema_elem;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -134,7 +146,7 @@ void thread_tick (void);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
-tid_t thread_create (const char *name, int priority, thread_func *, void *);
+struct thread * thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
@@ -162,6 +174,6 @@ void preempt_priority (void);
 void do_iret (struct intr_frame *tf);
 bool is_highest_priority(struct thread *t);
 bool cmp_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-
+struct thread *get_initial_thread (void);
 
 #endif /* threads/thread.h */

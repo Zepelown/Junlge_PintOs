@@ -1,6 +1,5 @@
 // #include "syscall.h"
 // #include "lib/user/syscall.h"
-#include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 
@@ -14,6 +13,7 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
+#include "user/syscall.h"
 
 void syscall_entry(void);
 
@@ -40,6 +40,8 @@ void check_address(void *addr);
 int sys_open (const char *file);
 
 int sys_filesize (int fd);
+pid_t sys_fork(const char *thread_name, struct intr_frame *f);
+int sys_wait (pid_t pid);
 
 /* System call.
  *
@@ -82,11 +84,16 @@ syscall_handler(struct intr_frame *f UNUSED) {
 			sys_exit(f->R.rdi);
 			break;
 		case SYS_FORK:
+			// printf("FORK START\n");
+			f->R.rax = sys_fork((char *)f->R.rdi, f);
 			break;
 		case SYS_EXEC:
+			// printf("EXIT START\n");
 			f->R.rax = sys_exec((char *) f->R.rdi);
 			break;
 		case SYS_WAIT:
+			// printf("WAIT START\n");
+			f->R.rax = sys_wait(f->R.rdi);
 			break;
 		case SYS_CREATE:
 			// exist 제외 통과
@@ -96,6 +103,7 @@ syscall_handler(struct intr_frame *f UNUSED) {
 			break;
 		case SYS_OPEN:
 			// 모두 통과
+			// printf("OPEN START\n");
 			f->R.rax = sys_open((char *) f->R.rdi);
 			break;
 		case SYS_FILESIZE:
@@ -103,10 +111,12 @@ syscall_handler(struct intr_frame *f UNUSED) {
 			break;
 		case SYS_READ:
 			// 모두 통과
+			// printf("READ START\n");
 			f->R.rax = sys_read(f->R.rdi, (void *) f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:{
 			// 모두 통과
+			// printf("WRITE START\n");
 			f->R.rax = sys_write(f->R.rdi, (char *) f->R.rsi, f->R.rdx);
 			break;
 		}
@@ -220,6 +230,22 @@ int sys_filesize (int fd) {
 		return -1;
 	}
 	return file_length(cur);
+}
+
+pid_t sys_fork(const char *thread_name, struct intr_frame *f) {
+	// file_duplicate()
+	// printf("FORK START\n");
+	tid_t thread_id = process_fork(thread_name, f);
+
+	if (TID_ERROR == thread_id) {
+		return TID_ERROR;
+	}
+	return thread_id;
+}
+
+int sys_wait (pid_t pid) {
+	// printf("WAIT START\n");
+	return process_wait(pid);
 }
 
 
