@@ -36,32 +36,39 @@ struct gp_registers {
 
 struct intr_frame {
 	/* Pushed by intr_entry in intr-stubs.S.
-	   These are the interrupted task's saved registers. */
-	struct gp_registers R;
-	uint16_t es;
-	uint16_t __pad1;
-	uint32_t __pad2;
-	uint16_t ds;
-	uint16_t __pad3;
-	uint32_t __pad4;
-	/* Pushed by intrNN_stub in intr-stubs.S. */
-	uint64_t vec_no; /* Interrupt vector number. */
+	   These are the interrupted task's saved registers.
+	   intr-stubs.S의 intr_entry에 의해 푸시됨. 이것들은 인터럽트된 작업의
+	   저장된 레지스터들임.*/
+	struct gp_registers R;//범용 레지스터들을 담는 구조체(예: rax, rbx, rdi, rsi 등)
+	uint16_t es; //es세그먼트 레지스터
+	uint16_t __pad1; //패딩
+	uint32_t __pad2; //패딩
+	uint16_t ds; //DS 세그먼트 레지스터
+	uint16_t __pad3; //패딩
+	uint32_t __pad4; //패딩
+	/* Pushed by intrNN_stub in intr-stubs.S. intr-stubs.S의 intrNN_stub에 의해 푸시됩니다.*/
+	uint64_t vec_no; /* Interrupt vector number. 인터럽트 벡터 번호.*/
 /* Sometimes pushed by the CPU,
    otherwise for consistency pushed as 0 by intrNN_stub.
-   The CPU puts it just under `eip', but we move it here. */
-	uint64_t error_code;
+   The CPU puts it just under `eip', but we move it here.
+	때로는 CPU에 의해 푸시되기도 하고,
+	그렇지 않으면 일관성을 위해 intrNN_stub에 의해 0으로 푸시됩니다.
+	CPU는 이것을 `rip` 바로 아래에 두지만, 우리는 여기로 옮겼습니다. */
+	uint64_t error_code; //오류 코드(특정 예외 발생 시 CPU가 푸시)
 /* Pushed by the CPU.
-   These are the interrupted task's saved registers. */
-	uintptr_t rip;
-	uint16_t cs;
-	uint16_t __pad5;
-	uint32_t __pad6;
-	uint64_t eflags;
-	uintptr_t rsp;
-	uint16_t ss;
-	uint16_t __pad7;
-	uint32_t __pad8;
-} __attribute__((packed));
+   These are the interrupted task's saved registers.
+   CPU에 의해 푸시됨.
+   이것들은 인터럽트된 작업의 저장된 레지스터들임.*/
+	uintptr_t rip; //명령어 포인터 (다음에 실행할 명령어 주소)
+	uint16_t cs; //CS 세그먼트 레지스터 (코드 세그먼트)
+	uint16_t __pad5; //패딩
+	uint32_t __pad6; //패딩
+	uint64_t eflags; //EFLAGS 레지스터 (CPU 상태 플래그)
+	uintptr_t rsp; //스택 포인터
+	uint16_t ss; //SS 세그먼트 레지스터 (스택 세그먼트)
+	uint16_t __pad7; //패딩
+	uint32_t __pad8; //패딩
+} __attribute__((packed)); //패딩 바이트를 최소화하기 위한 컴파일러 지시자
 
 typedef void intr_handler_func (struct intr_frame *);
 

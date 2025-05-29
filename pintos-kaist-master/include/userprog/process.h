@@ -10,5 +10,8 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
 
+//현재 스레드의 fdt에 현재 파일을 추가함
+int process_add_file(struct file *f);
+
 
 #endif /* userprog/process.h */

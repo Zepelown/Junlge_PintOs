@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,10 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+//파일 디스크립터 테이블
+#define FDT_PAGES 2
+#define FDT_COUNT_LIMIT 128
 
 #define TEST_MSG "[테스트]"
 
@@ -102,10 +107,36 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+/******************************************************************
+ * USERPROG PROJECT START                      *
+ ******************************************************************/
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+
+    /* File Descriptor Table */
+	struct file **fd_table;             /* 파일 디스크립터 테이블 */
+	int fd_idx;                         /* 다음 fd 인덱스 */
+
+    /* Process Hierarchy */
+	int exit_status;                    /* 종료 상태 값 */
+	struct intr_frame parent_if;        /* 부모의 인터럽트 프레임 (for fork) */
+	struct list child_list;             /* 자식 프로세스 리스트 */
+	struct list_elem child_elem;        /* 자식 리스트의 element */
+
+    /* Synchronization */
+	struct semaphore fork_sema;         /* fork 시 자식 프로세스 로딩 대기 */
+	struct semaphore wait_sema;         /* 자식 프로세스가 종료될 때까지 대기 */
+	struct semaphore free_sema;         /* 자식 프로세스 구조체 해제 대기 */
+
+    /* Executable File Handling */
+    struct file *running_file;          /* 현재 실행 중인 파일 */
+
 #endif
+/******************************************************************
+ * USERPROG PROJECT END                       *
+ ******************************************************************/
+
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;

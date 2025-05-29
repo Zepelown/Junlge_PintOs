@@ -198,7 +198,9 @@ thread_create (const char *name, int priority,
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
+	{
 		return TID_ERROR;
+	}
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
@@ -214,6 +216,17 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	// //파일 디스크립터
+	// t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	// if (t->fd_table == NULL)
+	// {
+	// 	palloc_free_page(t);
+	// 	return TID_ERROR;
+	// }
+
+	// t->fd_table[0] = (struct file *) 1; // STDIN_FILENO
+	// t->fd_table[1] = (struct file *) 2; // STDOUT_FILENO
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -265,7 +278,10 @@ thread_name (void) {
 
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
-   See the big comment at the top of thread.h for details. */
+   See the big comment at the top of thread.h for details.
+   실행 중인 스레드를 반환합니다.
+   이 함수는 running_thread() 함수에 몇 가지 온전성 검사(sanity check)를 추가한 것입니다.
+   자세한 내용은 thread.h 파일 최상단의 긴 주석을 참조하세요.*/
 struct thread *
 thread_current (void) {
 	struct thread *t = running_thread ();
@@ -274,7 +290,11 @@ thread_current (void) {
 	   If either of these assertions fire, then your thread may
 	   have overflowed its stack.  Each thread has less than 4 kB
 	   of stack, so a few big automatic arrays or moderate
-	   recursion can cause stack overflow. */
+	   recursion can cause stack overflow.
+	   T가 실제로 스레드인지 확인합니다.
+       만약 이 두 ASSERT 중 하나라도 발생(실패)한다면, 여러분의 스레드 스택이 오버플로우 되었을 수 있습니다.
+	   각 스레드는 4kB 미만의 스택을 가지므로, 몇 개의 큰 자동 배열(automatic arrays)이나
+       중간 정도의 재귀(recursion)만으로도 스택 오버플로우가 발생할 수 있습니다.*/
 	ASSERT (is_thread (t));
 	ASSERT (t->status == THREAD_RUNNING);
 
@@ -459,6 +479,23 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (name != NULL);
 
 	memset (t, 0, sizeof *t);
+
+
+#ifdef USERPROG
+    t->fd_table = NULL;
+	t->fd_idx = 2;
+
+	t->pml4 = NULL;
+	list_init(&t->child_list);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->free_sema, 0);
+
+	t->exit_status = 0;
+	t->running_file = NULL;
+#endif
+
+
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
@@ -469,6 +506,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->donations);
 
 	t->magic = THREAD_MAGIC;
+
+	printf("PINTOS_DBG: init_thread: Thread '%s' (struct at %p) magic: 0x%x set.\n", t->name, t, t->magic); // 수정
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

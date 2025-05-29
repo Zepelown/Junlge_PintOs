@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <debug.h>
 #include <stddef.h>
+#include "threads/synch.h"
 
 /* Process identifier. */
 typedef int pid_t;
