@@ -14,6 +14,8 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "user/syscall.h"
+#include "threads/palloc.h"
+#include "lib/string.h"
 
 void syscall_entry(void);
 
@@ -133,7 +135,14 @@ syscall_handler(struct intr_frame *f UNUSED) {
 int sys_exec(const char *cmd_line) {
 	// printf("cmd line : %s\n", cmd_line);
 	// thread_exit();
-	return process_exec((void *) cmd_line);
+	check_address(cmd_line);
+	char *cmd_line_copy;
+	cmd_line_copy = palloc_get_page(0);
+	if (cmd_line_copy == NULL)
+		sys_exit(-1);
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+	if (process_exec(cmd_line_copy) == -1)
+		sys_exit(-1); // 실패 시 status -1로 종료한다.
 }
 
 int sys_read(int fd, void *buffer, unsigned length) {
@@ -246,6 +255,10 @@ pid_t sys_fork(const char *thread_name, struct intr_frame *f) {
 int sys_wait (pid_t pid) {
 	// printf("WAIT START\n");
 	return process_wait(pid);
+}
+
+int sys_close() {
+
 }
 
 

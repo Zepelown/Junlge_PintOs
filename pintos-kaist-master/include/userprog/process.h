@@ -13,3 +13,6 @@ void process_activate (struct thread *next);
 void parse_file_name(const char *file_name, char **args);
 #endif /* userprog/process.h */
 struct thread *get_child_process(int pid);
+int process_add_file(struct file *f);
+struct file *process_get_file(int fd);
+void process_close_file(int fd);

@@ -21,15 +21,15 @@
 #include "userprog/syscall.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-
+#include "userprog/syscall.h"
 
 #ifdef VM
 #include "vm/vm.h"
 #endif
 
 
-#define MAX_ARG 25
-#define MAX_CMDLINE 128
+#define MAX_ARG 30
+#define MAX_CMDLINE 60
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -135,7 +135,9 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	// printf("FORK START\n");
 	struct thread* child = thread_create (name,
 			PRI_DEFAULT, __do_fork, cur);
-
+	if (child->tid == TID_ERROR) {
+		return TID_ERROR;
+	}
 	sema_down(&child->load_semaphore);
 	return child->tid;
 }
@@ -198,11 +200,11 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	// struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent->parent_if;
 	bool succ = true;
 	/* 1. Read the cpu context to local stack. */
 	// 구조체 설정하기
-	memcpy (&if_, &parent->parent_if, sizeof (struct intr_frame));
+	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 	// printf("parent_if after: %p\n",if_);
 	if_.R.rax = 0;
 	current->tf = if_;
@@ -229,11 +231,14 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 	// printf("FDT COPY BEFORE\n");
-	for (int i = 3; i < MAX_FDT_SIZE; i++) {
-		if (parent->fd_table[i] == NULL) {
+	for (int i = 0; i < MAX_FDT_SIZE; i++)
+	{
+		struct file *file = parent->fd_table[i];
+		if (file == NULL)
 			continue;
-		}
-		current->fd_table[i] = file_duplicate(parent->fd_table[i]);
+		if (i > 2)
+			file = file_duplicate(file);
+		current->fd_table[i] = file;
 	}
 	current->next_fd = parent->next_fd;
 	// printf("FDT COPY AFTER\n");
@@ -249,14 +254,15 @@ __do_fork (void *aux) {
 	if (succ)
 		do_iret (&current->tf);
 error:
-	thread_exit ();
+	sema_up(&current->load_semaphore);
+	sys_exit(TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	// printf("process_exec\n");
+	// printf("process_exec %s\n",f_name);
 	char *file_name = f_name;
 	bool success;
 
@@ -273,9 +279,11 @@ process_exec (void *f_name) {
 
 
 	/* And then load the binary */
+	// printf("process parse before \n");
 	char *args[MAX_ARG+1] = {NULL};
 	parse_file_name(f_name,args);
-	// printf("process exec %s\n",args[0]);
+	// printf("process parse after \n");
+	// printf("process load before %s\n",args[0]);
 
 	success = load (f_name, &_if);
 
@@ -283,7 +291,9 @@ process_exec (void *f_name) {
 	// hex_dump((uintptr_t)_if.rsp, _if.rsp,(USER_STACK - (uintptr_t)_if.rsp), true);
 
 
+
 	/* If load failed, quit. */
+	// printf("process load after %s\n",args[0]);
 	palloc_free_page (f_name);
 	if (!success)
 		return -1;
@@ -316,10 +326,13 @@ process_wait (tid_t child_tid UNUSED) {
 		return -1;
 	}
 
+
 	sema_down(&child->wait_semaphore);
 	list_remove(&child->child_elem);
 	sema_up(&child->exit_semaphore);
 	// for (int i=0; i<2000000000; i++){}
+
+
 	return child->exit_status;
 }
 
@@ -332,8 +345,10 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	// printf("%s: exit(%d)\n", thread_name(), curr->exit_status);
-	for (int i = 3; i < MAX_FDT_SIZE; i++) {
+	for (int i = 2; i < MAX_FDT_SIZE; i++) {
 		// close(i);
+		// sys_close
+		curr->fd_table[i] = NULL;
 	}
 	file_close(curr->running);
 	process_cleanup ();
@@ -445,9 +460,9 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Returns true if successful, false otherwise. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
-	// printf("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n");
+	// printf("current before\n");
 	struct thread *t = thread_current ();
-	// printf("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n");
+	// printf("current after\n");
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
@@ -460,8 +475,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	// printf("argv parse before\n");
 	char *argv[MAX_ARG+1] = {NULL};
 	parse_file_name(file_name,argv);
+	// printf("argv parse after\n");
 
 	/* Open executable file. */
 	file = filesys_open (argv[0]);
@@ -771,6 +788,40 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	}
 	return true;
 }
+
+// int process_add_file(struct file *f)
+// {
+// 	struct thread *curr = thread_current();
+// 	struct file **fdt = curr->fdt;
+//
+// 	// limit을 넘지 않는 범위 안에서 빈 자리 탐색
+// 	while (curr->next_fd < FDT_COUNT_LIMIT && fdt[curr->next_fd])
+// 		curr->next_fd++;
+// 	if (curr->next_fd >= FDT_COUNT_LIMIT)
+// 		return -1;
+// 	fdt[curr->next_fd] = f;
+//
+// 	return curr->next_fd;
+// }
+//
+// struct file *process_get_file(int fd)
+// {
+// 	struct thread *curr = thread_current();
+// 	struct file **fdt = curr->fdt;
+// 	/* 파일 디스크립터에 해당하는 파일 객체를 리턴 */
+// 	/* 없을 시 NULL 리턴 */
+// 	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+// 		return NULL;
+// 	return fdt[fd];
+// }
+// void process_close_file(int fd)
+// {
+// 	struct thread *curr = thread_current();
+// 	struct file **fdt = curr->fdt;
+// 	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+// 		return;
+// 	fdt[fd] = NULL;
+// }
 
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
 static bool

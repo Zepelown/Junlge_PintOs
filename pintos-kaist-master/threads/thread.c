@@ -201,6 +201,10 @@ thread_create (const char *name, int priority,
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
 		return TID_ERROR;
+	//
+	// t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES); // 추가
+	// if (t->fdt == NULL) // 추가
+	// 	return TID_ERROR; // 추가
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
@@ -216,7 +220,9 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-	list_push_back(&thread_current()->children, &t->child_elem);
+
+	// list_push_back(&thread_current()->children, &t->child_elem);
+
 	/* Add to run queue. */
 	thread_unblock (t);
 	preempt_priority();

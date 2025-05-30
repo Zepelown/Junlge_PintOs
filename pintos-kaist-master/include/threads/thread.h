@@ -30,7 +30,9 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 #define TEST_MSG "[테스트]"
-#define MAX_FDT_SIZE 128
+#define MAX_FDT_SIZE 60
+#define FDT_PAGES 2
+#define FDT_COUNT_LIMIT 128
 
 /* A kernel thread or user process.
  *
@@ -104,12 +106,14 @@ struct thread {
 	int64_t wake_up_tick; 				/* Wake Up Tick*/
 
 	struct file * fd_table[MAX_FDT_SIZE];
+	// struct file **fdt;
 	int next_fd;
 
 	struct intr_frame parent_if;
 	struct list children;
 	struct list_elem child_elem;
 	struct thread * parent;
+
 	struct semaphore load_semaphore;
 	struct semaphore wait_semaphore;
 	struct semaphore exit_semaphore;
